@@ -9,12 +9,19 @@ from dms import *
 telegram_bot = Bot(token=tg_token)
 dp = Dispatcher(telegram_bot)
 
+user_latest_schemes = {}
+
 
 def get_params(call):
     params = {}
     for i in call.data.split("&"):
         params[i.split(":")[0]] = i.split(":")[1]
     return params
+
+
+def user_left_scheme_view(user):
+    if user in user_latest_schemes:
+        user_latest_schemes.pop(user)
 
 
 @dp.message_handler(commands=['start', 'help'])
@@ -24,18 +31,21 @@ async def start(message: types.Message):
 
 @dp.callback_query_handler(lambda x: x.data == "main_menu")
 async def main_menu(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     await telegram_bot.send_message(text="Главное меню:", reply_markup=main_page_kb, chat_id=call.message.chat.id)
 
 
 # кнопка смотреть схемы
 @dp.callback_query_handler(lambda x: x.data == "look_schemes")
 async def look_schemes(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     await telegram_bot.send_message(text="Что делаем?)", reply_markup=look_schemes_kb, chat_id=call.message.chat.id)
 
 
 # кнопка новые схемы
 @dp.callback_query_handler(lambda x: x.data == "new_schemes")
 async def new_schemes(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     keyboard = InlineKeyboardMarkup()
     new_line = True
     for i in db_request(
@@ -54,6 +64,7 @@ async def new_schemes(call: types.callback_query):
 # кнопка лучшие схемы
 @dp.callback_query_handler(lambda x: x.data == "best_schemes")
 async def new_schemes(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     keyboard = InlineKeyboardMarkup()
     new_line = True
     for i in db_request(
@@ -73,6 +84,7 @@ async def new_schemes(call: types.callback_query):
 # кнопка мои схемы
 @dp.callback_query_handler(lambda x: x.data == "my_schemes")
 async def new_schemes(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     keyboard = InlineKeyboardMarkup()
     new_line = True
 
@@ -98,6 +110,7 @@ async def new_schemes(call: types.callback_query):
 
 @dp.callback_query_handler(lambda x: "add_like:" in x.data or "delete_like:" in x.data)
 async def look_scheme(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     if "add_like" in params.keys():
         db_request(f'INSERT INTO likes VALUES ({call.message.chat.id}, {params["add_like"]})')
@@ -105,10 +118,12 @@ async def look_scheme(call: types.callback_query):
         db_request(f'DELETE FROM likes WHERE user = {call.message.chat.id} and scheme = {params["delete_like"]}')
     await look_scheme(call)
 
+
 # просмотр схемы
 @dp.callback_query_handler(lambda x: "view_id:" in x.data)
 async def look_scheme(call: types.callback_query):
     params = get_params(call)
+    user_latest_schemes[call.from_user.id] = params["view_id"]
     is_like = db_request(
         f'SELECT count(*) FROM likes WHERE user = "{call.from_user.id}" AND scheme = {params["view_id"]}').fetchone()
     keyboard = InlineKeyboardMarkup()
@@ -118,7 +133,7 @@ async def look_scheme(call: types.callback_query):
     else:
         keyboard.add(InlineKeyboardButton(text="Поставить лайк",
                                           callback_data=f"add_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
-    keyboard.insert(InlineKeyboardButton(text="Назад", callback_data=params['back']))
+    keyboard.add(InlineKeyboardButton(text="Назад", callback_data=params['back']))
 
     stats = list(db_request(
         f'SELECT schemes.id, schemes.name, schemes.author, schemes.img, schemes.txt, schemes.state, '
@@ -144,12 +159,17 @@ async def look_scheme(call: types.callback_query):
         chat_id=call.message.chat.id)
     for from_chat_id, message_id in db_request(
             f"SELECT chat, message FROM comments WHERE scheme = {params['view_id']}"):
-        await telegram_bot.forward_message(chat_id=params['view_id'], from_chat_id=from_chat_id, message_id=message_id)
+        try:
+            await telegram_bot.forward_message(chat_id=call.from_user.id, from_chat_id=from_chat_id,
+                                               message_id=message_id)
+        except Exception:
+            pass
 
 
 # редактирование схемы
 @dp.callback_query_handler(lambda x: "edit_id:" in x.data)
 async def edit_scheme(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(text="Изменить", callback_data=f"change:{params['edit_id']}"))
@@ -187,6 +207,7 @@ async def edit_scheme(call: types.callback_query):
 # удалять или нет?
 @dp.callback_query_handler(lambda x: "submit_delete:" in x.data)
 async def submit_delete(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     name = db_request(f"SELECT name FROM schemes WHERE id = {params['submit_delete']}").fetchone()[0]
 
@@ -202,6 +223,7 @@ async def submit_delete(call: types.callback_query):
 # удаление
 @dp.callback_query_handler(lambda x: "delete:" in x.data)
 async def delete(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     db_request(f"UPDATE schemes SET state = -1 WHERE id = {params['delete']}")
     keyboard = InlineKeyboardMarkup()
@@ -211,7 +233,10 @@ async def delete(call: types.callback_query):
 
 @dp.message_handler(content_types=["text"])
 async def on_message(msg: types.Message):
-    print(msg.from_user.id)
+    if msg.from_user.id in user_latest_schemes:
+        db_request(
+            f"INSERT INTO comments VALUES ({user_latest_schemes[msg.from_user.id]}, {msg.from_user.id}, {msg.message_id})")
+    await telegram_bot.send_message(text="Комментарий добавлен", chat_id=msg.chat.id)
 
 
 executor.start_polling(dp, skip_updates=True)
