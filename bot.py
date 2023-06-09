@@ -38,7 +38,8 @@ async def look_schemes(call: types.callback_query):
 async def new_schemes(call: types.callback_query):
     keyboard = InlineKeyboardMarkup()
     new_line = True
-    for i in db_request("SELECT id, name FROM schemes WHERE schemes.state <> -1 ORDER BY post_date DESC LIMIT 10").fetchall():
+    for i in db_request(
+            "SELECT id, name FROM schemes WHERE schemes.state <> -1 ORDER BY post_date DESC LIMIT 10").fetchall():
         button = InlineKeyboardButton(text=i[1], callback_data=f"view_id:{i[0]}&back:new_schemes")
         if new_line:
             keyboard.add(button)
@@ -95,6 +96,15 @@ async def new_schemes(call: types.callback_query):
                                     chat_id=call.message.chat.id)
 
 
+@dp.callback_query_handler(lambda x: "add_like:" in x.data or "delete_like:" in x.data)
+async def look_scheme(call: types.callback_query):
+    params = get_params(call)
+    if "add_like" in params.keys():
+        db_request(f'INSERT INTO likes VALUES ({call.message.chat.id}, {params["add_like"]})')
+    else:
+        db_request(f'DELETE FROM likes WHERE user = {call.message.chat.id} and scheme = {params["delete_like"]}')
+    await look_scheme(call)
+
 # просмотр схемы
 @dp.callback_query_handler(lambda x: "view_id:" in x.data)
 async def look_scheme(call: types.callback_query):
@@ -104,10 +114,10 @@ async def look_scheme(call: types.callback_query):
     keyboard = InlineKeyboardMarkup()
     if is_like[0] != 0:
         keyboard.add(InlineKeyboardButton(text="Убрать лайк",
-                                          callback_data=f"delete_like:{params['view_id']}&view_id:{params['view_id']}"))
+                                          callback_data=f"delete_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
     else:
         keyboard.add(InlineKeyboardButton(text="Поставить лайк",
-                                          callback_data=f"add_like:{params['view_id']}&view_id:{params['view_id']}"))
+                                          callback_data=f"add_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
     keyboard.insert(InlineKeyboardButton(text="Назад", callback_data=params['back']))
 
     stats = list(db_request(
@@ -143,7 +153,8 @@ async def edit_scheme(call: types.callback_query):
     params = get_params(call)
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(text="Изменить", callback_data=f"change:{params['edit_id']}"))
-    keyboard.insert(InlineKeyboardButton(text="Удалить", callback_data=f"submit_delete:{params['edit_id']}&back:{params['back']}"))
+    keyboard.insert(
+        InlineKeyboardButton(text="Удалить", callback_data=f"submit_delete:{params['edit_id']}&back:{params['back']}"))
     keyboard.add(InlineKeyboardButton(text="Назад", callback_data=params['back']))
     stats = list(db_request(
         f'SELECT schemes.id, schemes.name, schemes.author, schemes.img, schemes.txt, '
@@ -172,6 +183,7 @@ async def edit_scheme(call: types.callback_query):
             f"SELECT chat, message FROM comments WHERE scheme = {params['edit_id']}"):
         await telegram_bot.forward_message(chat_id=params['edit_id'], from_chat_id=from_chat_id, message_id=message_id)
 
+
 # удалять или нет?
 @dp.callback_query_handler(lambda x: "submit_delete:" in x.data)
 async def submit_delete(call: types.callback_query):
@@ -180,9 +192,12 @@ async def submit_delete(call: types.callback_query):
 
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(text="Да", callback_data=f"delete:{params['submit_delete']}"))
-    keyboard.insert(InlineKeyboardButton(text="Нет", callback_data=f"edit_id:{params['submit_delete']}&back:{params['back']}"))
+    keyboard.insert(
+        InlineKeyboardButton(text="Нет", callback_data=f"edit_id:{params['submit_delete']}&back:{params['back']}"))
 
-    await telegram_bot.send_message(text=f"Вы уверенны что хотите удалить схему {name}?", chat_id=call.message.chat.id, reply_markup=keyboard)
+    await telegram_bot.send_message(text=f"Вы уверенны что хотите удалить схему {name}?", chat_id=call.message.chat.id,
+                                    reply_markup=keyboard)
+
 
 # удаление
 @dp.callback_query_handler(lambda x: "delete:" in x.data)
