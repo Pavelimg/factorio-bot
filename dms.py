@@ -4,4 +4,6 @@ cur = con.cursor()
 
 
 def db_request(request: str):
-    return cur.execute(request)
+    req = cur.execute(request)
+    con.commit()
+    return req

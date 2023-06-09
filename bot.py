@@ -76,8 +76,8 @@ async def new_schemes(call: types.callback_query):
     new_line = True
 
     schemes = db_request(
-        f"SELECT id, name FROM schemes WHERE author = {call.message.chat.id} ORDER BY "
-        f"post_date DESC LIMIT 10 AND schemes.state <> -1").fetchall()
+        f"SELECT id, name FROM schemes WHERE author = {call.message.chat.id} AND state <> -1 ORDER BY "
+        f"post_date DESC LIMIT 10 ").fetchall()
     if len(schemes) != 0:
         for i in schemes:
             button = InlineKeyboardButton(text=i[1], callback_data=f"edit_id:{i[0]}&back:my_schemes")
@@ -172,7 +172,7 @@ async def edit_scheme(call: types.callback_query):
             f"SELECT chat, message FROM comments WHERE scheme = {params['edit_id']}"):
         await telegram_bot.forward_message(chat_id=params['edit_id'], from_chat_id=from_chat_id, message_id=message_id)
 
-
+# удалять или нет?
 @dp.callback_query_handler(lambda x: "submit_delete:" in x.data)
 async def submit_delete(call: types.callback_query):
     params = get_params(call)
@@ -184,7 +184,7 @@ async def submit_delete(call: types.callback_query):
 
     await telegram_bot.send_message(text=f"Вы уверенны что хотите удалить схему {name}?", chat_id=call.message.chat.id, reply_markup=keyboard)
 
-
+# удаление
 @dp.callback_query_handler(lambda x: "delete:" in x.data)
 async def delete(call: types.callback_query):
     params = get_params(call)
