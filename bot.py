@@ -119,20 +119,33 @@ async def look_scheme(call: types.callback_query):
     await look_scheme(call)
 
 
+@dp.callback_query_handler(lambda x: "delete_comm:" in x.data)
+async def look_scheme(call: types.callback_query):
+    user_left_scheme_view(call.message.chat.id)
+    params = get_params(call)
+    db_request(f"DELETE FROM comments WHERE scheme ={params['delete_comm']} AND chat = {call.message.chat.id}")
+    await look_scheme(call)
+
+
 # просмотр схемы
 @dp.callback_query_handler(lambda x: "view_id:" in x.data)
 async def look_scheme(call: types.callback_query):
     params = get_params(call)
     user_latest_schemes[call.from_user.id] = params["view_id"]
-    is_like = db_request(
-        f'SELECT count(*) FROM likes WHERE user = "{call.from_user.id}" AND scheme = {params["view_id"]}').fetchone()
+    user, scheme = call.from_user.id, params["view_id"]
+    req = list(db_request(
+        f'SELECT count(*) as likes_count, comments_tbl.comments_count FROM likes LEFT JOIN (SELECT count(*) as comments_count, scheme, chat FROM comments WHERE scheme = {scheme} AND chat = {user}) as comments_tbl ON likes.user = comments_tbl.chat WHERE likes.user = {user} AND likes.scheme = {scheme} UNION ALL SELECT likes_tbl.likes_count, count(*) as comments_count FROM comments LEFT JOIN (SELECT count(*) as likes_count, scheme, user FROM likes WHERE scheme = {scheme} AND user = {user}) as likes_tbl ON comments.chat = likes_tbl.user WHERE comments.chat= {user} AND comments.scheme = {scheme}').fetchall())
+    is_like, is_comm = req[0][0], req[1][1]
     keyboard = InlineKeyboardMarkup()
-    if is_like[0] != 0:
+    if is_like != 0:
         keyboard.add(InlineKeyboardButton(text="Убрать лайк",
                                           callback_data=f"delete_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
     else:
         keyboard.add(InlineKeyboardButton(text="Поставить лайк",
                                           callback_data=f"add_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
+    if is_comm != 0:
+        keyboard.insert(InlineKeyboardButton(text="Удалить коментарии",
+                                             callback_data=f"delete_comm:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
     keyboard.add(InlineKeyboardButton(text="Назад", callback_data=params['back']))
 
     stats = list(db_request(
