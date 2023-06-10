@@ -50,27 +50,48 @@ async def look_schemes(call: types.callback_query):
 
 
 # кнопка новые схемы
-@dp.callback_query_handler(lambda x: x.data == "new_schemes")
-async def new_schemes(call: types.callback_query):
+@dp.callback_query_handler(lambda x: x.data.startswith("new_schemes"))
+async def best_schemes(call: types.callback_query):
     user_page_change(call.message.chat.id, "new_schemes")
+    params = get_params(call)
     keyboard = InlineKeyboardMarkup()
     new_line = True
-    for i in db_request(
-            "SELECT id, name FROM schemes WHERE schemes.state <> -1 ORDER BY post_date DESC LIMIT 10").fetchall():
-        button = InlineKeyboardButton(text=i[1], callback_data=f"view_id:{i[0]}&back:new_schemes")
+    req = db_request(
+        "SELECT id, name FROM schemes WHERE schemes.state <> -1 ORDER BY post_date DESC").fetchall()
+    if "page" in params.keys():
+        current_page = int(params['page'])
+    else:
+        current_page = 1
+
+    for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
+        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:new_schemes")
         if new_line:
             keyboard.add(button)
         else:
             keyboard.insert(button)
         new_line = not new_line
-    keyboard.add(InlineKeyboardButton(text="Назад", callback_data="look_schemes"))
-    await telegram_bot.send_message(text="Последние загруженные схемы:", reply_markup=keyboard,
+
+    preview_page = InlineKeyboardButton(text="Предыдущая страница",
+                                        callback_data=f"new_schemes&page:{current_page - 1}")
+    next_page = InlineKeyboardButton(text="Следующая страница",
+                                     callback_data=f"new_schemes&page:{current_page + 1}")
+    back = InlineKeyboardButton(text="Назад", callback_data="look_schemes")
+    if current_page != 1 and current_page * 10 < len(req):
+        keyboard.add(preview_page)
+        keyboard.insert(next_page)
+    elif current_page == 1:
+        keyboard.add(next_page)
+    elif current_page * 10 > len(req):
+        keyboard.add(preview_page)
+    keyboard.add(back)
+    await telegram_bot.send_message(text=f"Самые новые схемы (Страница {current_page}/{ceil(len(req) / 10)}):",
+                                    reply_markup=keyboard,
                                     chat_id=call.message.chat.id)
 
 
 # кнопка лучшие схемы
 @dp.callback_query_handler(lambda x: x.data.startswith("best_schemes"))
-async def new_schemes(call: types.callback_query):
+async def best_schemes(call: types.callback_query):
     user_page_change(call.message.chat.id, "best_schemes")
     params = get_params(call)
     keyboard = InlineKeyboardMarkup()
