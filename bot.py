@@ -9,7 +9,7 @@ from dms import *
 telegram_bot = Bot(token=tg_token)
 dp = Dispatcher(telegram_bot)
 
-user_latest_schemes = {}
+user_last_action = {}
 
 
 def get_params(call):
@@ -19,9 +19,13 @@ def get_params(call):
     return params
 
 
-def user_left_scheme_view(user):
-    if user in user_latest_schemes:
-        user_latest_schemes.pop(user)
+def get_user_state(user):
+    if user in user_last_action:
+        return user_last_action[user]
+
+
+def user_page_change(user, page):
+    user_last_action[user] = page
 
 
 @dp.message_handler(commands=['start', 'help'])
@@ -31,21 +35,21 @@ async def start(message: types.Message):
 
 @dp.callback_query_handler(lambda x: x.data == "main_menu")
 async def main_menu(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "main_menu")
     await telegram_bot.send_message(text="Главное меню:", reply_markup=main_page_kb, chat_id=call.message.chat.id)
 
 
 # кнопка смотреть схемы
 @dp.callback_query_handler(lambda x: x.data == "look_schemes")
 async def look_schemes(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "look_schemes")
     await telegram_bot.send_message(text="Что делаем?)", reply_markup=look_schemes_kb, chat_id=call.message.chat.id)
 
 
 # кнопка новые схемы
 @dp.callback_query_handler(lambda x: x.data == "new_schemes")
 async def new_schemes(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "new_schemes")
     keyboard = InlineKeyboardMarkup()
     new_line = True
     for i in db_request(
@@ -64,7 +68,7 @@ async def new_schemes(call: types.callback_query):
 # кнопка лучшие схемы
 @dp.callback_query_handler(lambda x: x.data == "best_schemes")
 async def new_schemes(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "best_schemes")
     keyboard = InlineKeyboardMarkup()
     new_line = True
     for i in db_request(
@@ -84,7 +88,7 @@ async def new_schemes(call: types.callback_query):
 # кнопка мои схемы
 @dp.callback_query_handler(lambda x: x.data == "my_schemes")
 async def new_schemes(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "my_schemes")
     keyboard = InlineKeyboardMarkup()
     new_line = True
 
@@ -108,9 +112,14 @@ async def new_schemes(call: types.callback_query):
                                     chat_id=call.message.chat.id)
 
 
+# поиск схемы
+@dp.callback_query_handler(lambda x: "find_scheme:" in x.data)
+async def find_scheme(call: types.callback_query):
+    pass
+
+
 @dp.callback_query_handler(lambda x: "add_like:" in x.data or "delete_like:" in x.data)
 async def look_scheme(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     if "add_like" in params.keys():
         db_request(f'INSERT INTO likes VALUES ({call.message.chat.id}, {params["add_like"]})')
@@ -121,7 +130,6 @@ async def look_scheme(call: types.callback_query):
 
 @dp.callback_query_handler(lambda x: "delete_comm:" in x.data)
 async def look_scheme(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     db_request(f"DELETE FROM comments WHERE scheme ={params['delete_comm']} AND chat = {call.message.chat.id}")
     await look_scheme(call)
@@ -131,7 +139,7 @@ async def look_scheme(call: types.callback_query):
 @dp.callback_query_handler(lambda x: "view_id:" in x.data)
 async def look_scheme(call: types.callback_query):
     params = get_params(call)
-    user_latest_schemes[call.from_user.id] = params["view_id"]
+    user_page_change(call.message.chat.id, f"view:{params['view_id']}")
     user, scheme = call.from_user.id, params["view_id"]
     req = list(db_request(
         f'SELECT count(*) as likes_count, comments_tbl.comments_count FROM likes LEFT JOIN (SELECT count(*) as comments_count, scheme, chat FROM comments WHERE scheme = {scheme} AND chat = {user}) as comments_tbl ON likes.user = comments_tbl.chat WHERE likes.user = {user} AND likes.scheme = {scheme} UNION ALL SELECT likes_tbl.likes_count, count(*) as comments_count FROM comments LEFT JOIN (SELECT count(*) as likes_count, scheme, user FROM likes WHERE scheme = {scheme} AND user = {user}) as likes_tbl ON comments.chat = likes_tbl.user WHERE comments.chat= {user} AND comments.scheme = {scheme}').fetchall())
@@ -182,7 +190,7 @@ async def look_scheme(call: types.callback_query):
 # редактирование схемы
 @dp.callback_query_handler(lambda x: "edit_id:" in x.data)
 async def edit_scheme(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "edit")
     params = get_params(call)
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(text="Изменить", callback_data=f"change:{params['edit_id']}"))
@@ -220,7 +228,7 @@ async def edit_scheme(call: types.callback_query):
 # удалять или нет?
 @dp.callback_query_handler(lambda x: "submit_delete:" in x.data)
 async def submit_delete(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
+    user_page_change(call.message.chat.id, "submit_delete")
     params = get_params(call)
     name = db_request(f"SELECT name FROM schemes WHERE id = {params['submit_delete']}").fetchone()[0]
 
@@ -236,7 +244,6 @@ async def submit_delete(call: types.callback_query):
 # удаление
 @dp.callback_query_handler(lambda x: "delete:" in x.data)
 async def delete(call: types.callback_query):
-    user_left_scheme_view(call.message.chat.id)
     params = get_params(call)
     db_request(f"UPDATE schemes SET state = -1 WHERE id = {params['delete']}")
     keyboard = InlineKeyboardMarkup()
@@ -246,9 +253,9 @@ async def delete(call: types.callback_query):
 
 @dp.message_handler(content_types=["text"])
 async def on_message(msg: types.Message):
-    if msg.from_user.id in user_latest_schemes:
+    if "view" in get_user_state(msg.from_user.id):
         db_request(
-            f"INSERT INTO comments VALUES ({user_latest_schemes[msg.from_user.id]}, {msg.from_user.id}, {msg.message_id})")
+            f"INSERT INTO comments VALUES ({get_user_state(msg.from_user.id).split(':')[1]}, {msg.from_user.id}, {msg.message_id})")
     await telegram_bot.send_message(text="Комментарий добавлен", chat_id=msg.chat.id)
 
 
