@@ -64,7 +64,7 @@ async def best_schemes(call: types.callback_query):
         current_page = 1
 
     for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
-        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:new_schemes")
+        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:new_schemes&page:{current_page}")
         if new_line:
             keyboard.add(button)
         else:
@@ -105,7 +105,7 @@ async def best_schemes(call: types.callback_query):
         current_page = 1
 
     for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
-        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:best_schemes")
+        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:best_schemes&page:{current_page}")
         if new_line:
             keyboard.add(button)
         else:
@@ -200,7 +200,7 @@ async def look_scheme(call: types.callback_query):
     if is_comm != 0:
         keyboard.insert(InlineKeyboardButton(text="Удалить коментарии",
                                              callback_data=f"delete_comm:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
-    keyboard.add(InlineKeyboardButton(text="Назад", callback_data=params['back']))
+    keyboard.add(InlineKeyboardButton(text="Назад", callback_data=f"{params['back']}&page:{params['page']}"))
 
     stats = list(db_request(
         f'SELECT schemes.id, schemes.name, schemes.author, schemes.img, schemes.txt, schemes.state, '
