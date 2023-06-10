@@ -16,7 +16,9 @@ user_last_action = {}
 def get_params(call):
     params = {}
     for i in call.data.split("&"):
-        params[i.split(":")[0]] = i.split(":")[1]
+        split_text = i.split(":")
+        if len(split_text) == 2:
+            params[split_text[0]] = split_text[1]
     return params
 
 
@@ -67,22 +69,43 @@ async def new_schemes(call: types.callback_query):
 
 
 # кнопка лучшие схемы
-@dp.callback_query_handler(lambda x: x.data == "best_schemes")
+@dp.callback_query_handler(lambda x: x.data.startswith("best_schemes"))
 async def new_schemes(call: types.callback_query):
     user_page_change(call.message.chat.id, "best_schemes")
+    params = get_params(call)
     keyboard = InlineKeyboardMarkup()
     new_line = True
-    for i in db_request(
-            "SELECT id, name FROM schemes WHERE schemes.state <> -1 ORDER BY (SELECT count(*) as likes_count FROM likes WHERE scheme = "
-            "schemes.id) DESC LIMIT 10 ").fetchall():
-        button = InlineKeyboardButton(text=i[1], callback_data=f"view_id:{i[0]}&back:best_schemes")
+    req = db_request(
+        "SELECT id, name FROM schemes WHERE schemes.state <> -1 ORDER BY (SELECT count(*) as likes_count FROM likes WHERE scheme = "
+        "schemes.id) DESC ").fetchall()
+    if "page" in params.keys():
+        current_page = int(params['page'])
+    else:
+        current_page = 1
+
+    for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
+        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:best_schemes")
         if new_line:
             keyboard.add(button)
         else:
             keyboard.insert(button)
         new_line = not new_line
-    keyboard.add(InlineKeyboardButton(text="Назад", callback_data="look_schemes"))
-    await telegram_bot.send_message(text="Лучшие схемы по рейтингу:", reply_markup=keyboard,
+
+    preview_page = InlineKeyboardButton(text="Предыдущая страница",
+                                        callback_data=f"best_schemes&page:{current_page - 1}")
+    next_page = InlineKeyboardButton(text="Следующая страница",
+                                     callback_data=f"best_schemes&page:{current_page + 1}")
+    back = InlineKeyboardButton(text="Назад", callback_data="look_schemes")
+    if current_page != 1 and current_page * 10 < len(req):
+        keyboard.add(preview_page)
+        keyboard.insert(next_page)
+    elif current_page == 1:
+        keyboard.add(next_page)
+    elif current_page * 10 > len(req):
+        keyboard.add(preview_page)
+    keyboard.add(back)
+    await telegram_bot.send_message(text=f"Лучшие схемы по рейтингу (Страница {current_page}/{ceil(len(req) / 10)}):",
+                                    reply_markup=keyboard,
                                     chat_id=call.message.chat.id)
 
 
@@ -276,13 +299,11 @@ async def search_page(call: types.callback_query):
     if current_page != 1 and current_page * 10 < len(res):
         keyboard.add(preview_page)
         keyboard.insert(next_page)
-        keyboard.add(back)
     elif current_page == 1:
         keyboard.add(next_page)
-        keyboard.add(back)
     elif current_page * 10 > len(res):
         keyboard.add(preview_page)
-        keyboard.add(back)
+    keyboard.add(back)
 
     await telegram_bot.send_message(text=f"Страница {current_page}/{ceil(len(res) / 10)} по запросу '{params['req']}'",
                                     chat_id=call.from_user.id,
