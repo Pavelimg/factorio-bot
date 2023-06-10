@@ -11,3 +11,5 @@ look_schemes_kb.add(InlineKeyboardButton(text="Лучшие схемы", callbac
 look_schemes_kb.insert(InlineKeyboardButton(text="Мои схемы", callback_data="my_schemes"))
 look_schemes_kb.add(InlineKeyboardButton(text="Новые схемы", callback_data="new_schemes"))
 look_schemes_kb.insert(InlineKeyboardButton(text="Главная страница", callback_data="main_menu"))
+
+

@@ -64,7 +64,8 @@ async def best_schemes(call: types.callback_query):
         current_page = 1
 
     for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
-        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:new_schemes&page:{current_page}")
+        button = InlineKeyboardButton(text=req[i][1],
+                                      callback_data=f"view_id:{req[i][0]}&back:new_schemes&page:{current_page}")
         if new_line:
             keyboard.add(button)
         else:
@@ -81,7 +82,7 @@ async def best_schemes(call: types.callback_query):
         keyboard.insert(next_page)
     elif current_page == 1:
         keyboard.add(next_page)
-    elif current_page * 10 > len(req):
+    elif current_page * 10 < len(req):
         keyboard.add(preview_page)
     keyboard.add(back)
     await telegram_bot.send_message(text=f"Самые новые схемы (Страница {current_page}/{ceil(len(req) / 10)}):",
@@ -105,7 +106,8 @@ async def best_schemes(call: types.callback_query):
         current_page = 1
 
     for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
-        button = InlineKeyboardButton(text=req[i][1], callback_data=f"view_id:{req[i][0]}&back:best_schemes&page:{current_page}")
+        button = InlineKeyboardButton(text=req[i][1],
+                                      callback_data=f"view_id:{req[i][0]}&back:best_schemes&page:{current_page}")
         if new_line:
             keyboard.add(button)
         else:
@@ -120,9 +122,9 @@ async def best_schemes(call: types.callback_query):
     if current_page != 1 and current_page * 10 < len(req):
         keyboard.add(preview_page)
         keyboard.insert(next_page)
-    elif current_page == 1:
+    elif current_page == 1 and len(req) > 10:
         keyboard.add(next_page)
-    elif current_page * 10 > len(req):
+    elif current_page * 10 < len(req):
         keyboard.add(preview_page)
     keyboard.add(back)
     await telegram_bot.send_message(text=f"Лучшие схемы по рейтингу (Страница {current_page}/{ceil(len(req) / 10)}):",
@@ -131,29 +133,43 @@ async def best_schemes(call: types.callback_query):
 
 
 # кнопка мои схемы
-@dp.callback_query_handler(lambda x: x.data == "my_schemes")
-async def new_schemes(call: types.callback_query):
+@dp.callback_query_handler(lambda x: x.data.startswith("my_schemes"))
+async def best_schemes(call: types.callback_query):
     user_page_change(call.message.chat.id, "my_schemes")
+    params = get_params(call)
     keyboard = InlineKeyboardMarkup()
     new_line = True
-
-    schemes = db_request(
-        f"SELECT id, name FROM schemes WHERE author = {call.message.chat.id} AND state <> -1 ORDER BY "
-        f"post_date DESC LIMIT 10 ").fetchall()
-    if len(schemes) != 0:
-        for i in schemes:
-            button = InlineKeyboardButton(text=i[1], callback_data=f"edit_id:{i[0]}&back:my_schemes")
-            if new_line:
-                keyboard.add(button)
-            else:
-                keyboard.insert(button)
-            new_line = not new_line
+    req = db_request(
+        f"SELECT id, name FROM schemes WHERE author = {call.message.chat.id} AND state <> -1 ORDER BY post_date DESC LIMIT 10 ").fetchall()
+    if "page" in params.keys():
+        current_page = int(params['page'])
     else:
-        await telegram_bot.send_message(text="У тебя пока нет схем(", reply_markup=look_schemes_kb,
-                                        chat_id=call.message.chat.id)
-        return
-    keyboard.add(InlineKeyboardButton(text="Назад", callback_data="look_schemes"))
-    await telegram_bot.send_message(text="Твои схемы:", reply_markup=keyboard,
+        current_page = 1
+
+    for i in range(10 * (current_page - 1), min(current_page * 10, len(req))):
+        button = InlineKeyboardButton(text=req[i][1],
+                                      callback_data=f"edit_id:{req[i][0]}&back:my_schemes&page:{current_page}")
+        if new_line:
+            keyboard.add(button)
+        else:
+            keyboard.insert(button)
+        new_line = not new_line
+
+    preview_page = InlineKeyboardButton(text="Предыдущая страница",
+                                        callback_data=f"my_schemes&page:{current_page - 1}")
+    next_page = InlineKeyboardButton(text="Следующая страница",
+                                     callback_data=f"my_schemes&page:{current_page + 1}")
+    back = InlineKeyboardButton(text="Назад", callback_data="look_schemes")
+    if current_page != 1 and current_page * 10 < len(req):
+        keyboard.add(preview_page)
+        keyboard.insert(next_page)
+    elif current_page == 1 and len(req) > 10:
+        keyboard.add(next_page)
+    elif current_page * 10 < len(req):
+        keyboard.add(preview_page)
+    keyboard.add(back)
+    await telegram_bot.send_message(text=f"Ваши схемы: (Страница {current_page}/{ceil(len(req) / 10)}):",
+                                    reply_markup=keyboard,
                                     chat_id=call.message.chat.id)
 
 
@@ -242,7 +258,7 @@ async def edit_scheme(call: types.callback_query):
     keyboard.add(InlineKeyboardButton(text="Изменить", callback_data=f"change:{params['edit_id']}"))
     keyboard.insert(
         InlineKeyboardButton(text="Удалить", callback_data=f"submit_delete:{params['edit_id']}&back:{params['back']}"))
-    keyboard.add(InlineKeyboardButton(text="Назад", callback_data=params['back']))
+    keyboard.add(InlineKeyboardButton(text="Назад", callback_data=f"{params['back']}&page:{params['page']}"))
     stats = list(db_request(
         f'SELECT schemes.id, schemes.name, schemes.author, schemes.img, schemes.txt, '
         f'likes_tbl.likes_count, comments_tbl.comments_count, categories_tbl.category_name, '
