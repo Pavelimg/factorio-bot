@@ -2,6 +2,7 @@ import time
 
 from aiogram import Bot, Dispatcher, executor, types
 
+from math import ceil
 from config import *
 from keyboards import *
 from dms import *
@@ -113,9 +114,10 @@ async def new_schemes(call: types.callback_query):
 
 
 # поиск схемы
-@dp.callback_query_handler(lambda x: "find_scheme:" in x.data)
+@dp.callback_query_handler(lambda x: "find_scheme" in x.data)
 async def find_scheme(call: types.callback_query):
-    pass
+    user_page_change(call.message.chat.id, "find_scheme")
+    await telegram_bot.send_message(chat_id=call.from_user.id, text="Отправь название схемы")
 
 
 @dp.callback_query_handler(lambda x: "add_like:" in x.data or "delete_like:" in x.data)
@@ -208,7 +210,6 @@ async def edit_scheme(call: types.callback_query):
         f'count(*) as comments_count FROM comments WHERE scheme = {params["edit_id"]}) as comments_tbl ON schemes.id '
         f'= comments_tbl.scheme WHERE schemes.id = {params["edit_id"]} AND categories_tbl.category_id = '
         f'schemes.category AND material_tbl.material_id = schemes.material AND schemes.state <> -1').fetchone())
-    print(stats)
     if not stats[5]:
         stats[5] = 0
     if not stats[6]:
@@ -251,12 +252,72 @@ async def delete(call: types.callback_query):
     await telegram_bot.send_message(text=f"Схема удалена", chat_id=call.message.chat.id, reply_markup=keyboard)
 
 
+@dp.callback_query_handler(lambda x: "search_page:" in x.data)
+async def search_page(call: types.callback_query):
+    params = get_params(call)
+    current_page = int(params['search_page'])
+    res = db_request(
+        f"SELECT id, name FROM schemes WHERE lower_name like '%{params['req']}%' ORDER BY post_date DESC").fetchall()
+    keyboard = InlineKeyboardMarkup()
+    new_line = True
+    for i in range((current_page - 1) * 10, min(10 * current_page, len(res))):
+        button = InlineKeyboardButton(text=res[i][1], callback_data=f"view_id:{res[i][0]}&back:look_schemes")
+        if new_line:
+            keyboard.add(button)
+        else:
+            keyboard.insert(button)
+        new_line = not new_line
+    preview_page = InlineKeyboardButton(text="Предыдущая страница",
+                                        callback_data=f"search_page:{current_page - 1}&req:{params['req']}")
+    next_page = InlineKeyboardButton(text="Следующая страница",
+                                     callback_data=f"search_page:{current_page + 1}&req:{params['req']}")
+
+    back = InlineKeyboardButton(text="Назад", callback_data="look_schemes")
+    if current_page != 1 and current_page * 10 < len(res):
+        keyboard.add(preview_page)
+        keyboard.insert(next_page)
+        keyboard.add(back)
+    elif current_page == 1:
+        keyboard.add(next_page)
+        keyboard.add(back)
+    elif current_page * 10 > len(res):
+        keyboard.add(preview_page)
+        keyboard.add(back)
+
+    await telegram_bot.send_message(text=f"Страница {current_page}/{ceil(len(res) / 10)} по запросу '{params['req']}'",
+                                    chat_id=call.from_user.id,
+                                    reply_markup=keyboard)
+
+
 @dp.message_handler(content_types=["text"])
 async def on_message(msg: types.Message):
     if "view" in get_user_state(msg.from_user.id):
         db_request(
             f"INSERT INTO comments VALUES ({get_user_state(msg.from_user.id).split(':')[1]}, {msg.from_user.id}, {msg.message_id})")
-    await telegram_bot.send_message(text="Комментарий добавлен", chat_id=msg.chat.id)
+        await telegram_bot.send_message(text="Комментарий добавлен", chat_id=msg.chat.id)
+    if "find_scheme" in get_user_state(msg.from_user.id):
+        res = db_request(
+            f"SELECT id, name FROM schemes WHERE lower_name like '%{msg.text}%' ORDER BY post_date DESC").fetchall()
+        keyboard = InlineKeyboardMarkup()
+        new_line = True
+        if len(res) != 0:
+            for i in range(min(10, len(res))):
+                button = InlineKeyboardButton(text=res[i][1], callback_data=f"view_id:{res[i][0]}&back:look_schemes")
+                if new_line:
+                    keyboard.add(button)
+                else:
+                    keyboard.insert(button)
+                new_line = not new_line
+
+            if len(res) > 10:
+                keyboard.add(
+                    InlineKeyboardButton(text="Следующая страница", callback_data=f"search_page:2&req:{msg.text}"))
+            keyboard.add(InlineKeyboardButton(text="Назад", callback_data=f"look_schemes"))
+            await telegram_bot.send_message(text=f'По запросу "{msg.text}" найдено {len(res)} схем:',
+                                            chat_id=msg.from_user.id, reply_markup=keyboard)
+        else:
+            await telegram_bot.send_message(text=f"Ничего не найдено(", chat_id=msg.from_user.id,
+                                            reply_markup=look_schemes_kb)
 
 
 executor.start_polling(dp, skip_updates=True)
