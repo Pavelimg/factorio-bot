@@ -15,7 +15,9 @@ user_last_action = {}
 
 def get_params(call):
     params = {}
+    print(call.data)
     for i in call.data.split("&"):
+        print(i)
         split_text = i.split(":")
         if len(split_text) == 2:
             params[split_text[0]] = split_text[1]
@@ -25,6 +27,7 @@ def get_params(call):
 def get_user_state(user):
     if user in user_last_action:
         return user_last_action[user]
+    return ""
 
 
 def user_page_change(user, page):
@@ -51,7 +54,7 @@ async def look_schemes(call: types.callback_query):
 
 # кнопка новые схемы
 @dp.callback_query_handler(lambda x: x.data.startswith("new_schemes"))
-async def best_schemes(call: types.callback_query):
+async def new_schemes(call: types.callback_query):
     user_page_change(call.message.chat.id, "new_schemes")
     params = get_params(call)
     keyboard = InlineKeyboardMarkup()
@@ -134,7 +137,7 @@ async def best_schemes(call: types.callback_query):
 
 # кнопка мои схемы
 @dp.callback_query_handler(lambda x: x.data.startswith("my_schemes"))
-async def best_schemes(call: types.callback_query):
+async def my_schemes(call: types.callback_query):
     user_page_change(call.message.chat.id, "my_schemes")
     params = get_params(call)
     keyboard = InlineKeyboardMarkup()
@@ -201,6 +204,7 @@ async def look_scheme(call: types.callback_query):
 @dp.callback_query_handler(lambda x: "view_id:" in x.data)
 async def look_scheme(call: types.callback_query):
     params = get_params(call)
+    print(params)
     user_page_change(call.message.chat.id, f"view:{params['view_id']}")
     user, scheme = call.from_user.id, params["view_id"]
     req = list(db_request(
@@ -209,13 +213,13 @@ async def look_scheme(call: types.callback_query):
     keyboard = InlineKeyboardMarkup()
     if is_like != 0:
         keyboard.add(InlineKeyboardButton(text="Убрать лайк",
-                                          callback_data=f"delete_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
+                                          callback_data=f"delete_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}&page:{params['page']}"))
     else:
         keyboard.add(InlineKeyboardButton(text="Поставить лайк",
-                                          callback_data=f"add_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
+                                          callback_data=f"add_like:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}&page:{params['page']}"))
     if is_comm != 0:
         keyboard.insert(InlineKeyboardButton(text="Удалить коментарии",
-                                             callback_data=f"delete_comm:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}"))
+                                             callback_data=f"delete_comm:{params['view_id']}&back:{params['back']}&view_id:{params['view_id']}&page:{params['page']}"))
     keyboard.add(InlineKeyboardButton(text="Назад", callback_data=f"{params['back']}&page:{params['page']}"))
 
     stats = list(db_request(
@@ -247,7 +251,6 @@ async def look_scheme(call: types.callback_query):
                                                message_id=message_id)
         except Exception:
             pass
-
 
 # редактирование схемы
 @dp.callback_query_handler(lambda x: "edit_id:" in x.data)
@@ -321,7 +324,8 @@ async def search_page(call: types.callback_query):
     keyboard = InlineKeyboardMarkup()
     new_line = True
     for i in range((current_page - 1) * 10, min(10 * current_page, len(res))):
-        button = InlineKeyboardButton(text=res[i][1], callback_data=f"view_id:{res[i][0]}&back:look_schemes")
+        print("hui")
+        button = InlineKeyboardButton(text=res[i][1], callback_data=f"view_id:{res[i][0]}&back:search_page&page:{search_page}")
         if new_line:
             keyboard.add(button)
         else:
@@ -353,14 +357,15 @@ async def on_message(msg: types.Message):
         db_request(
             f"INSERT INTO comments VALUES ({get_user_state(msg.from_user.id).split(':')[1]}, {msg.from_user.id}, {msg.message_id})")
         await telegram_bot.send_message(text="Комментарий добавлен", chat_id=msg.chat.id)
-    if "find_scheme" in get_user_state(msg.from_user.id):
+    elif "find_scheme" in get_user_state(msg.from_user.id):
         res = db_request(
             f"SELECT id, name FROM schemes WHERE lower_name like '%{msg.text}%' ORDER BY post_date DESC").fetchall()
         keyboard = InlineKeyboardMarkup()
         new_line = True
         if len(res) != 0:
             for i in range(min(10, len(res))):
-                button = InlineKeyboardButton(text=res[i][1], callback_data=f"view_id:{res[i][0]}&back:look_schemes")
+                print("gui2")
+                button = InlineKeyboardButton(text=res[i][1], callback_data=f"view_id:{res[i][0]}&back:search_page&page:1&req={msg.text}")
                 if new_line:
                     keyboard.add(button)
                 else:
@@ -376,6 +381,7 @@ async def on_message(msg: types.Message):
         else:
             await telegram_bot.send_message(text=f"Ничего не найдено(", chat_id=msg.from_user.id,
                                             reply_markup=look_schemes_kb)
-
+    else:
+        print(msg.from_user.id)
 
 executor.start_polling(dp, skip_updates=True)
